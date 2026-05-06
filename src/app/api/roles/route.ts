@@ -1,29 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import pool, { query, toCamel } from '@/lib/db';
 import { requireRole } from '@/lib/auth-helpers';
-import type { UserRole } from '@prisma/client';
+import type { UserRole } from '@/lib/types';
 
 const VALID_ROLES: UserRole[] = ['ADMIN', 'PROJECT_MANAGER', 'TEAM_LEAD', 'EMPLOYEE', 'CLIENT_VIEWER'];
 
-// GET /api/roles — list all email→role mappings (admin only)
-export async function GET(_req: NextRequest) {
+// ── GET /api/roles ────────────────────────────────────────────
+
+export async function GET() {
   const { error } = await requireRole(['ADMIN']);
   if (error) return error;
 
-  const mappings = await prisma.emailRoleMapping.findMany({
-    orderBy: { email: 'asc' },
-  });
+  const [mappings, users] = await Promise.all([
+    query(`SELECT * FROM email_role_mappings ORDER BY email ASC`),
+    query(
+      `SELECT id, email, name, image, role, department, designation, last_login_at
+       FROM users ORDER BY email ASC`,
+    ),
+  ]);
 
-  // Also include existing signed-in users with their actual roles
-  const users = await prisma.user.findMany({
-    select: { id: true, email: true, name: true, image: true, role: true, department: true, designation: true, lastLoginAt: true },
-    orderBy: { email: 'asc' },
+  return NextResponse.json({
+    mappings: mappings.map(toCamel),
+    users:    users.map(toCamel),
   });
-
-  return NextResponse.json({ mappings, users });
 }
 
-// POST /api/roles — upsert email→role mapping + update user if they exist (admin only)
+// ── POST /api/roles ───────────────────────────────────────────
+
 export async function POST(req: NextRequest) {
   const { error, session } = await requireRole(['ADMIN']);
   if (error) return error;
@@ -34,33 +37,38 @@ export async function POST(req: NextRequest) {
   if (!email || !role) {
     return NextResponse.json({ error: 'email and role are required' }, { status: 400 });
   }
-
   if (!VALID_ROLES.includes(role as UserRole)) {
-    return NextResponse.json({ error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` }, { status: 400 });
+    return NextResponse.json(
+      { error: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}` },
+      { status: 400 },
+    );
   }
 
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = (email as string).toLowerCase().trim();
 
-  // Upsert the mapping
-  const mapping = await prisma.emailRoleMapping.upsert({
-    where: { email: normalizedEmail },
-    create: { email: normalizedEmail, role: role as UserRole, notes, createdBy: session!.user.id },
-    update: { role: role as UserRole, notes, createdBy: session!.user.id },
-  });
+  // Upsert mapping
+  const { rows: mapping } = await pool.query(
+    `INSERT INTO email_role_mappings (id, email, role, notes, created_by)
+     VALUES ($1,$2,$3,$4,$5)
+     ON CONFLICT (email) DO UPDATE SET role = EXCLUDED.role, notes = EXCLUDED.notes, created_by = EXCLUDED.created_by
+     RETURNING *`,
+    [crypto.randomUUID(), normalizedEmail, role, notes ?? null, session!.user.id],
+  );
 
-  // If the user has already signed in, update their role in the users table too
-  const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
-  if (existingUser) {
-    await prisma.user.update({
-      where: { email: normalizedEmail },
-      data: { role: role as UserRole },
-    });
-  }
+  // Apply to existing user if already signed in
+  const { rows: existing } = await pool.query(
+    `UPDATE users SET role = $1 WHERE email = $2 RETURNING id`,
+    [role, normalizedEmail],
+  );
 
-  return NextResponse.json({ mapping, userUpdated: !!existingUser }, { status: 201 });
+  return NextResponse.json(
+    { mapping: toCamel(mapping[0]), userUpdated: existing.length > 0 },
+    { status: 201 },
+  );
 }
 
-// DELETE /api/roles?email=xxx — remove a mapping (admin only)
+// ── DELETE /api/roles?email=xxx ───────────────────────────────
+
 export async function DELETE(req: NextRequest) {
   const { error } = await requireRole(['ADMIN']);
   if (error) return error;
@@ -69,6 +77,9 @@ export async function DELETE(req: NextRequest) {
   const email = searchParams.get('email');
   if (!email) return NextResponse.json({ error: 'email is required' }, { status: 400 });
 
-  await prisma.emailRoleMapping.deleteMany({ where: { email: email.toLowerCase() } });
+  await pool.query(
+    `DELETE FROM email_role_mappings WHERE email = $1`,
+    [email.toLowerCase()],
+  );
   return new NextResponse(null, { status: 204 });
 }

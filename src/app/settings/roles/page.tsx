@@ -29,7 +29,8 @@ const ROLE_COLORS: Record<string, string> = {
 export default function RolesPage() {
   const { data: session } = useSession();
   const router = useRouter();
-  const { data: mappings = [], isLoading: mappingsLoading } = useRoles();
+  const { data: rolesData, isLoading: mappingsLoading } = useRoles();
+  const mappings: any[] = rolesData?.mappings ?? [];
   const { data: users = [], isLoading: usersLoading } = useResources();
   const upsertRole = useUpsertRole();
   const deleteRole = useDeleteRole();

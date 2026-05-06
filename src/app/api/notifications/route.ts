@@ -1,16 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { NextResponse } from 'next/server';
+import { query, toCamel } from '@/lib/db';
 import { requireAuth } from '@/lib/auth-helpers';
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const { error, session } = await requireAuth();
   if (error) return error;
 
-  const notifications = await prisma.notification.findMany({
-    where: { userId: session!.user.id },
-    orderBy: { createdAt: 'desc' },
-    take: 30,
-  });
+  const rows = await query(
+    `SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 30`,
+    [session!.user.id],
+  );
 
-  return NextResponse.json(notifications);
+  return NextResponse.json(rows.map(toCamel));
 }

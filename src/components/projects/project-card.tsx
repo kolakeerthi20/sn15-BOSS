@@ -19,7 +19,9 @@ interface ProjectCardProps {
 
 export function ProjectCard({ project, onEdit, onDelete }: ProjectCardProps) {
   const daysLeft = daysUntil(project.endDate);
-  const budgetBurn = calcBudgetBurnPercent(project.spentBudget, project.budget);
+  const budgetBurn = project.budget != null && project.spentBudget != null
+    ? calcBudgetBurnPercent(project.spentBudget, project.budget)
+    : 0;
   const isOverBudget = budgetBurn > 90;
   const isLate = daysLeft < 0;
 

@@ -156,13 +156,13 @@ export function TaskDetail({ task, onClose }: TaskDetailProps) {
         )}
 
         {/* Labels */}
-        {(task.labels ?? []).length > 0 && (
+        {(task.tags ?? []).length > 0 && (
           <div>
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Labels</label>
+            <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Tags</label>
             <div className="flex flex-wrap gap-1.5">
-              {task.labels.map((label: string) => (
-                <span key={label} className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400">
-                  {label}
+              {task.tags.map((t: any) => (
+                <span key={t.id ?? t.tag} className="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-medium text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400">
+                  {t.tag}
                 </span>
               ))}
             </div>

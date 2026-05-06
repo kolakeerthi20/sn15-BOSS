@@ -85,8 +85,8 @@ export default function ResourcesPage() {
             ) : (
               <div className="grid gap-4 sm:grid-cols-2">
                 {filtered.map((user: any) => {
-                  const activeTasks = (user.tasks ?? []).filter((t: any) => t.status === 'IN_PROGRESS');
-                  const blockedTasks = (user.tasks ?? []).filter((t: any) => t.status === 'BLOCKED');
+                  const activeTasks = (user.assignedTasks ?? []).filter((t: any) => t.status === 'IN_PROGRESS');
+                  const blockedTasks = (user.assignedTasks ?? []).filter((t: any) => t.status === 'BLOCKED');
                   const util = user.utilization ?? 0;
 
                   return (
@@ -134,19 +134,19 @@ export default function ResourcesPage() {
                             </span>
                           )}
                           <span className="rounded-md bg-slate-100 px-2 py-0.5 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
-                            {(user.tasks ?? []).length} total
+                            {(user.assignedTasks ?? []).length} total
                           </span>
                         </div>
 
-                        {user.skills && user.skills.length > 0 && (
+                        {(user.userSkills ?? []).length > 0 && (
                           <div className="flex flex-wrap gap-1">
-                            {user.skills.slice(0, 3).map((skill: string) => (
-                              <span key={skill} className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-400">
-                                {skill}
+                            {user.userSkills.slice(0, 3).map((s: any) => (
+                              <span key={s.id ?? s.skill} className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-400">
+                                {s.skill}
                               </span>
                             ))}
-                            {user.skills.length > 3 && (
-                              <span className="text-[10px] text-slate-400 self-center">+{user.skills.length - 3}</span>
+                            {user.userSkills.length > 3 && (
+                              <span className="text-[10px] text-slate-400 self-center">+{user.userSkills.length - 3}</span>
                             )}
                           </div>
                         )}

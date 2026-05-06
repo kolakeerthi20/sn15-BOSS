@@ -1,15 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { NextResponse } from 'next/server';
+import pool from '@/lib/db';
 import { requireAuth } from '@/lib/auth-helpers';
 
-export async function POST(_req: NextRequest) {
+export async function POST() {
   const { error, session } = await requireAuth();
   if (error) return error;
 
-  await prisma.notification.updateMany({
-    where: { userId: session!.user.id, isRead: false },
-    data: { isRead: true, readAt: new Date() },
-  });
+  await pool.query(
+    `UPDATE notifications SET is_read = true, read_at = NOW()
+     WHERE user_id = $1 AND is_read = false`,
+    [session!.user.id],
+  );
 
   return NextResponse.json({ ok: true });
 }

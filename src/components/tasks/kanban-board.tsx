@@ -97,8 +97,8 @@ function KanbanCard({ task, isDragging, onDragStart, onDragEnd, onClick }: {
   onDragEnd: () => void;
   onClick: () => void;
 }) {
-  const daysLeft = daysUntil(task.dueDate);
-  const isOverdue = daysLeft < 0;
+  const daysLeft = task.dueDate != null ? daysUntil(task.dueDate) : null;
+  const isOverdue = daysLeft != null && daysLeft < 0;
 
   return (
     <div
@@ -113,11 +113,11 @@ function KanbanCard({ task, isDragging, onDragStart, onDragEnd, onClick }: {
         task.priority === 'CRITICAL' && 'border-l-2 border-l-red-600'
       )}
     >
-      {(task.labels ?? []).length > 0 && (
+      {(task.tags ?? []).length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1">
-          {task.labels.map((label: string) => (
-            <span key={label} className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-400">
-              {label}
+          {task.tags.map((t: any) => (
+            <span key={t.id ?? t.tag} className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-400">
+              {t.tag}
             </span>
           ))}
         </div>
@@ -162,12 +162,14 @@ function KanbanCard({ task, isDragging, onDragStart, onDragEnd, onClick }: {
         </div>
       </div>
 
-      <div className={cn(
-        'mt-1.5 text-[10px] font-medium',
-        isOverdue ? 'text-red-600 dark:text-red-400' : daysLeft <= 3 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'
-      )}>
-        {isOverdue ? `${Math.abs(daysLeft)}d overdue` : daysLeft === 0 ? 'Due today' : `Due ${formatDate(task.dueDate)}`}
-      </div>
+      {daysLeft != null && (
+        <div className={cn(
+          'mt-1.5 text-[10px] font-medium',
+          isOverdue ? 'text-red-600 dark:text-red-400' : daysLeft <= 3 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'
+        )}>
+          {isOverdue ? `${Math.abs(daysLeft)}d overdue` : daysLeft === 0 ? 'Due today' : `Due ${formatDate(task.dueDate)}`}
+        </div>
+      )}
     </div>
   );
 }

@@ -10,7 +10,8 @@ export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(amount);
 }
 
-export function formatDate(dateStr: string): string {
+export function formatDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return '—';
   return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
@@ -83,7 +84,8 @@ export function getInitials(name: string): string {
   return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 }
 
-export function daysUntil(dateStr: string): number {
+export function daysUntil(dateStr: string | null | undefined): number {
+  if (!dateStr) return 0;
   return Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000);
 }
 

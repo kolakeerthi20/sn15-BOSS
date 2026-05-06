@@ -12,12 +12,14 @@ import { getStatusColor, getStatusDot, getPriorityColor, formatDate } from '@/li
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { getInitials } from '@/lib/utils';
+import { CreateTaskDialog } from '@/components/tasks/create-task-dialog';
 
 export default function TasksPage() {
   const { selectedTaskId, selectTask } = useUIStore();
   const { data: tasks = [], isLoading: tasksLoading } = useTasks();
   const { data: projects = [] } = useProjects();
   const [search, setSearch] = useState('');
+  const [showCreate, setShowCreate] = useState(false);
   const [projectFilter, setProjectFilter] = useState('ALL');
   const [view, setView] = useState<'kanban' | 'list'>('kanban');
 
@@ -32,6 +34,7 @@ export default function TasksPage() {
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       <Header title="Tasks" />
+      <CreateTaskDialog open={showCreate} onOpenChange={setShowCreate} defaultProjectId={projectFilter !== 'ALL' ? projectFilter : undefined} />
 
       <div className="flex flex-1 overflow-hidden">
         <div className={cn('flex flex-1 flex-col overflow-hidden transition-all', selectedTask ? 'mr-0' : '')}>
@@ -72,7 +75,7 @@ export default function TasksPage() {
                   <List className="h-3.5 w-3.5" />
                 </button>
               </div>
-              <Button size="sm" className="gap-1.5">
+              <Button size="sm" className="gap-1.5" onClick={() => setShowCreate(true)}>
                 <Plus className="h-3.5 w-3.5" />
                 Add Task
               </Button>

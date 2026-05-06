@@ -58,7 +58,7 @@ export function ActivityFeed() {
                   {log.deliverables.slice(0, 2).map((d: any, di: number) => (
                     <span key={di} className="inline-flex items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
                       <CheckCircle2 className="h-2.5 w-2.5" />
-                      {d.description ?? d}
+                      {d.title ?? String(d)}
                     </span>
                   ))}
                   {log.deliverables.length > 2 && (

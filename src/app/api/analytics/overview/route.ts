@@ -1,56 +1,85 @@
-import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import { NextResponse } from 'next/server';
+import pool from '@/lib/db';
 import { requireAuth } from '@/lib/auth-helpers';
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const { error, session } = await requireAuth();
   if (error) return error;
 
   const isManager = ['ADMIN', 'PROJECT_MANAGER'].includes(session!.user.role);
 
-  const projectWhere = isManager
-    ? { isArchived: false }
-    : { isArchived: false, members: { some: { userId: session!.user.id } } };
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000);
+  const sevenDaysLater = new Date(now.getTime() + 7 * 86_400_000);
+  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+
+  // Parameterized project scope — avoids SQL injection
+  const scopeParams: any[] = [];
+  const projectScope = isManager
+    ? `SELECT id FROM projects WHERE is_archived = false`
+    : (() => {
+        scopeParams.push(session!.user.id);
+        return `SELECT id FROM projects WHERE is_archived = false
+                AND id IN (SELECT project_id FROM project_members WHERE user_id = $1)`;
+      })();
 
   const [
-    totalProjects, activeProjects, atRiskProjects,
-    totalUsers, activeUsers,
-    overdueTasks, inProgressTasks, blockedTasks,
-    todayLogs,
+    totals, users, tasks, todayLogs, upcoming,
   ] = await Promise.all([
-    prisma.project.count({ where: projectWhere }),
-    prisma.project.count({ where: { ...projectWhere, status: 'ACTIVE' } }),
-    prisma.project.count({ where: { ...projectWhere, status: 'AT_RISK' } }),
-    prisma.user.count({ where: { isActive: true } }),
-    prisma.user.count({ where: { isActive: true, lastLoginAt: { gte: new Date(Date.now() - 7 * 86400000) } } }),
-    prisma.task.count({ where: { dueDate: { lt: new Date() }, status: { not: 'COMPLETED' }, project: projectWhere } }),
-    prisma.task.count({ where: { status: 'IN_PROGRESS', project: projectWhere } }),
-    prisma.task.count({ where: { status: 'BLOCKED', project: projectWhere } }),
-    prisma.dailyLog.count({ where: { date: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } } }),
+    pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE true)                         AS total_projects,
+         COUNT(*) FILTER (WHERE status = 'ACTIVE')            AS active_projects,
+         COUNT(*) FILTER (WHERE status = 'AT_RISK')           AS at_risk_projects
+       FROM projects WHERE id IN (${projectScope})`,
+      scopeParams,
+    ),
+    pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE is_active = true)             AS total_users,
+         COUNT(*) FILTER (WHERE is_active = true AND last_login_at >= $1) AS active_users
+       FROM users`,
+      [sevenDaysAgo],
+    ),
+    pool.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE status != 'COMPLETED' AND due_date < $${scopeParams.length + 1}) AS overdue,
+         COUNT(*) FILTER (WHERE status = 'IN_PROGRESS')                  AS in_progress,
+         COUNT(*) FILTER (WHERE status = 'BLOCKED')                      AS blocked
+       FROM tasks WHERE project_id IN (${projectScope})`,
+      [...scopeParams, now],
+    ),
+    pool.query(
+      `SELECT COUNT(*)::int AS count FROM daily_logs WHERE date >= $1`,
+      [todayStart],
+    ),
+    pool.query(
+      `SELECT COUNT(*)::int AS count
+       FROM tasks
+       WHERE project_id IN (${projectScope})
+         AND status != 'COMPLETED'
+         AND due_date >= $${scopeParams.length + 1} AND due_date <= $${scopeParams.length + 2}`,
+      [...scopeParams, now, sevenDaysLater],
+    ),
   ]);
 
-  // Upcoming deadlines (next 7 days)
-  const upcomingDeadlines = await prisma.task.count({
-    where: {
-      dueDate: { gte: new Date(), lte: new Date(Date.now() + 7 * 86400000) },
-      status: { not: 'COMPLETED' },
-      project: projectWhere,
-    },
-  });
+  const t = totals.rows[0];
+  const u = users.rows[0];
+  const k = tasks.rows[0];
 
   return NextResponse.json({
-    totalProjects,
-    activeProjects,
-    delayedProjects: atRiskProjects,
-    totalResources: totalUsers,
-    activeResources: activeUsers,
-    avgUtilization: 0, // computed client-side from task load
-    tasksCompletedToday: todayLogs,
-    upcomingDeadlines,
-    overdueTasks,
-    inProgressTasks,
-    blockedTasks,
-    productivityScore: 0, // computed from daily logs
-    burnRate: 0,
+    totalProjects:      parseInt(t.total_projects),
+    activeProjects:     parseInt(t.active_projects),
+    delayedProjects:    parseInt(t.at_risk_projects),
+    totalResources:     parseInt(u.total_users),
+    activeResources:    parseInt(u.active_users),
+    avgUtilization:     0,
+    tasksCompletedToday: todayLogs.rows[0].count,
+    upcomingDeadlines:  upcoming.rows[0].count,
+    overdueTasks:       parseInt(k.overdue),
+    inProgressTasks:    parseInt(k.in_progress),
+    blockedTasks:       parseInt(k.blocked),
+    productivityScore:  0,
+    burnRate:           0,
   });
 }

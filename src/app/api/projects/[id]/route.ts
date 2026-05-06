@@ -1,93 +1,135 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/db';
+import pool, { query, toCamel } from '@/lib/db';
 import { requireAuth, requireRole, MANAGER_ROLES } from '@/lib/auth-helpers';
 
-const FULL_INCLUDE = {
-  manager: { select: { id: true, name: true, email: true, image: true, role: true, department: true, designation: true } },
-  members: {
-    include: {
-      user: { select: { id: true, name: true, email: true, image: true, role: true, department: true, designation: true } },
-    },
-  },
-  milestones: { orderBy: { dueDate: 'asc' as const } },
-  sprints: { orderBy: { startDate: 'asc' as const } },
-  tags: true,
-  tasks: {
-    include: {
-      assignee: { select: { id: true, name: true, email: true, image: true } },
-      reporter: { select: { id: true, name: true, email: true, image: true } },
-      subtasks: { orderBy: { position: 'asc' as const } },
-      tags: true,
-    },
-    orderBy: { position: 'asc' as const },
-  },
-} as const;
+type Params = { params: Promise<{ id: string }> };
 
-export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+async function loadFullProject(id: string) {
+  const rows = await query(
+    `SELECT p.*,
+            u.id AS mgr_id, u.name AS mgr_name, u.email AS mgr_email, u.image AS mgr_image,
+            u.role AS mgr_role, u.department AS mgr_department, u.designation AS mgr_designation
+     FROM projects p JOIN users u ON u.id = p.manager_id
+     WHERE p.id = $1`,
+    [id],
+  );
+  if (!rows[0]) return null;
+
+  const [members, milestones, sprints, tags] = await Promise.all([
+    query(
+      `SELECT pm.id, pm.project_id, pm.user_id, pm.role, pm.allocation, pm.joined_at,
+              u.id AS u_id, u.name AS u_name, u.email AS u_email, u.image AS u_image,
+              u.role AS u_role, u.department AS u_department, u.designation AS u_designation
+       FROM project_members pm JOIN users u ON u.id = pm.user_id
+       WHERE pm.project_id = $1`,
+      [id],
+    ),
+    query(`SELECT * FROM milestones WHERE project_id = $1 ORDER BY due_date ASC`, [id]),
+    query(`SELECT * FROM sprints WHERE project_id = $1 ORDER BY start_date ASC`, [id]),
+    query(`SELECT * FROM project_tags WHERE project_id = $1`, [id]),
+  ]);
+
+  const {
+    mgrId, mgrName, mgrEmail, mgrImage, mgrRole, mgrDepartment, mgrDesignation,
+    ...proj
+  } = toCamel(rows[0]);
+
+  return {
+    ...proj,
+    manager: {
+      id: mgrId, name: mgrName, email: mgrEmail, image: mgrImage,
+      role: mgrRole, department: mgrDepartment, designation: mgrDesignation,
+    },
+    members: members.map(m => ({
+      id: m.id, projectId: m.project_id, userId: m.user_id,
+      role: m.role, allocation: m.allocation, joinedAt: m.joined_at,
+      user: {
+        id: m.u_id, name: m.u_name, email: m.u_email, image: m.u_image,
+        role: m.u_role, department: m.u_department, designation: m.u_designation,
+      },
+    })),
+    milestones: milestones.map(toCamel),
+    sprints:    sprints.map(toCamel),
+    tags:       tags.map(toCamel),
+  };
+}
+
+// ── GET /api/projects/:id ─────────────────────────────────────
+
+export async function GET(_req: NextRequest, { params }: Params) {
   const { error, session } = await requireAuth();
   if (error) return error;
   const { id } = await params;
 
-  const project = await prisma.project.findUnique({ where: { id }, include: FULL_INCLUDE });
+  const project = await loadFullProject(id);
   if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  // Check access
-  const isMember = project.members.some(m => m.userId === session!.user.id);
-  const isManager = project.managerId === session!.user.id;
-  const isAdmin = ['ADMIN', 'PROJECT_MANAGER'].includes(session!.user.role);
-  if (!isMember && !isManager && !isAdmin) {
+  const isMember = project.members.some((m: any) => m.userId === session!.user.id);
+  const isAdmin  = ['ADMIN', 'PROJECT_MANAGER'].includes(session!.user.role);
+  if (!isMember && project.manager.id !== session!.user.id && !isAdmin) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
   return NextResponse.json(project);
 }
 
-export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// ── PATCH /api/projects/:id ───────────────────────────────────
+
+export async function PATCH(req: NextRequest, { params }: Params) {
   const { error, session } = await requireAuth();
   if (error) return error;
   const { id } = await params;
 
-  const project = await prisma.project.findUnique({ where: { id } });
-  if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const { rows: existing } = await pool.query(`SELECT manager_id FROM projects WHERE id = $1`, [id]);
+  if (!existing[0]) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const canEdit = project.managerId === session!.user.id || ['ADMIN', 'PROJECT_MANAGER'].includes(session!.user.role);
-  if (!canEdit) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const isAdmin = ['ADMIN', 'PROJECT_MANAGER'].includes(session!.user.role);
+  if (existing[0].manager_id !== session!.user.id && !isAdmin) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const body = await req.json();
-  const { name, description, client, status, priority, startDate, endDate, budget, completionPercent, healthScore, riskLevel } = body;
+  const sets: string[] = [];
+  const vals: any[]    = [];
+  let i = 1;
 
-  const updated = await prisma.project.update({
-    where: { id },
-    data: {
-      ...(name && { name }),
-      ...(description !== undefined && { description }),
-      ...(client !== undefined && { client }),
-      ...(status && { status }),
-      ...(priority && { priority }),
-      ...(startDate && { startDate: new Date(startDate) }),
-      ...(endDate && { endDate: new Date(endDate) }),
-      ...(budget !== undefined && { budget: budget ? parseFloat(budget) : null }),
-      ...(completionPercent !== undefined && { completionPercent: parseInt(completionPercent) }),
-      ...(healthScore !== undefined && { healthScore: parseInt(healthScore) }),
-      ...(riskLevel && { riskLevel }),
-    },
-    include: { manager: true, members: { include: { user: true } }, milestones: true, tags: true },
-  });
+  const addField = (col: string, val: any) => { sets.push(`${col} = $${i++}`); vals.push(val); };
 
-  return NextResponse.json(updated);
+  if (body.name              !== undefined) addField('name',               body.name);
+  if (body.description       !== undefined) addField('description',        body.description);
+  if (body.client            !== undefined) addField('client',             body.client);
+  if (body.status            !== undefined) addField('status',             body.status);
+  if (body.priority          !== undefined) addField('priority',           body.priority);
+  if (body.startDate         !== undefined) addField('start_date',         new Date(body.startDate));
+  if (body.endDate           !== undefined) addField('end_date',           new Date(body.endDate));
+  if (body.budget            !== undefined) addField('budget',             body.budget ? parseFloat(body.budget) : null);
+  if (body.completionPercent !== undefined) addField('completion_percent', parseInt(body.completionPercent));
+  if (body.healthScore       !== undefined) addField('health_score',       parseInt(body.healthScore));
+  if (body.riskLevel         !== undefined) addField('risk_level',         body.riskLevel);
+
+  if (sets.length === 0) {
+    return NextResponse.json(await loadFullProject(id));
+  }
+
+  vals.push(id);
+  await pool.query(`UPDATE projects SET ${sets.join(', ')} WHERE id = $${i}`, vals);
+
+  return NextResponse.json(await loadFullProject(id));
 }
 
-export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+// ── DELETE /api/projects/:id (soft-delete) ────────────────────
+
+export async function DELETE(_req: NextRequest, { params }: Params) {
   const { error, session } = await requireRole(MANAGER_ROLES);
   if (error) return error;
   const { id } = await params;
 
-  const project = await prisma.project.findUnique({ where: { id } });
-  if (!project) return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  const { rows } = await pool.query(`SELECT manager_id FROM projects WHERE id = $1`, [id]);
+  if (!rows[0]) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-  const canDelete = project.managerId === session!.user.id || session!.user.role === 'ADMIN';
+  const canDelete = rows[0].manager_id === session!.user.id || session!.user.role === 'ADMIN';
   if (!canDelete) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  await prisma.project.update({ where: { id }, data: { isArchived: true } });
+  await pool.query(`UPDATE projects SET is_archived = true WHERE id = $1`, [id]);
   return new NextResponse(null, { status: 204 });
 }

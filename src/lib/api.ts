@@ -11,6 +11,7 @@ async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
     const err = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(err.error ?? `Request failed: ${res.status}`);
   }
+  if (res.status === 204 || res.headers.get('content-length') === '0') return undefined as T;
   return res.json() as Promise<T>;
 }
 
@@ -48,7 +49,7 @@ export const api = {
     productivity: () => fetchJSON<any>('/api/analytics/productivity'),
   },
   roles: {
-    list: () => fetchJSON<any[]>('/api/roles'),
+    list: () => fetchJSON<{ mappings: any[]; users: any[] }>('/api/roles'),
     upsert: (data: { email: string; role: string; notes?: string }) =>
       fetchJSON<any>('/api/roles', { method: 'POST', body: JSON.stringify(data) }),
     delete: (email: string) =>

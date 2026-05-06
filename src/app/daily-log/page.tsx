@@ -16,7 +16,7 @@ export default function DailyLogPage() {
   const { data: teamFeed = [] } = useTeamFeed(today);
   const { data: myLogs = [] } = useDailyLogs({ userId: session?.user?.id ?? '' });
 
-  const hasLoggedToday = myLogs.some((l: any) => l.date === today);
+  const hasLoggedToday = myLogs.some((l: any) => String(l.date).slice(0, 10) === today);
 
   return (
     <div className="flex flex-col min-h-screen">

@@ -9,6 +9,7 @@ import { useProjects } from '@/hooks/use-projects';
 import { getStatusColor, getStatusDot, formatDate, formatCurrency } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { CreateProjectDialog } from '@/components/projects/create-project-dialog';
 
 const STATUS_FILTERS = [
   { value: 'ALL', label: 'All' },
@@ -25,6 +26,7 @@ export default function ProjectsPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [view, setView] = useState<'grid' | 'list'>('grid');
+  const [showCreate, setShowCreate] = useState(false);
 
   const filtered = projects.filter((p: any) => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -38,6 +40,7 @@ export default function ProjectsPage() {
   return (
     <div className="flex flex-col min-h-screen">
       <Header title="Projects" />
+      <CreateProjectDialog open={showCreate} onOpenChange={setShowCreate} />
 
       <div className="flex-1 p-6 space-y-5">
         {/* Toolbar */}
@@ -74,7 +77,7 @@ export default function ProjectsPage() {
               </button>
             </div>
             {isManager && (
-              <Button size="sm" className="gap-1.5">
+              <Button size="sm" className="gap-1.5" onClick={() => setShowCreate(true)}>
                 <Plus className="h-3.5 w-3.5" />
                 New Project
               </Button>
