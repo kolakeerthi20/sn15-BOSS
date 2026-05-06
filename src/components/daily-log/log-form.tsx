@@ -3,29 +3,31 @@ import React, { useState } from 'react';
 import { Send, Plus, X, Clock, CheckCircle2, AlertTriangle, Calendar } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAppStore } from '@/store/app-store';
-import { LogStatus, DailyLog } from '@/types';
+import { useSession } from 'next-auth/react';
+import { useProjects } from '@/hooks/use-projects';
+import { useTasks } from '@/hooks/use-tasks';
+import { useSubmitDailyLog } from '@/hooks/use-daily-logs';
 
-const STATUS_OPTIONS: { value: LogStatus; label: string; color: string }[] = [
-  { value: 'NOT_STARTED', label: 'Not Started', color: 'text-slate-500' },
-  { value: 'IN_PROGRESS', label: 'In Progress', color: 'text-blue-600' },
-  { value: 'BLOCKED', label: 'Blocked', color: 'text-red-600' },
-  { value: 'IN_REVIEW', label: 'In Review', color: 'text-purple-600' },
-  { value: 'COMPLETED', label: 'Completed', color: 'text-emerald-600' },
+const STATUS_OPTIONS = [
+  { value: 'NOT_STARTED', label: 'Not Started' },
+  { value: 'IN_PROGRESS', label: 'In Progress' },
+  { value: 'BLOCKED', label: 'Blocked' },
+  { value: 'IN_REVIEW', label: 'In Review' },
+  { value: 'COMPLETED', label: 'Completed' },
 ];
 
 export function DailyLogForm({ onSuccess }: { onSuccess?: () => void }) {
-  const { currentUser, projects, tasks, addDailyLog } = useAppStore();
-  const [submitting, setSubmitting] = useState(false);
+  const { data: session } = useSession();
+  const { data: projects = [] } = useProjects();
+  const { data: tasks = [] } = useTasks();
+  const submitLog = useSubmitDailyLog();
   const [submitted, setSubmitted] = useState(false);
 
   const [form, setForm] = useState({
     projectId: '',
     taskId: '',
-    status: 'IN_PROGRESS' as LogStatus,
+    status: 'IN_PROGRESS',
     summary: '',
     hoursWorked: '',
     blockers: '',
@@ -34,12 +36,8 @@ export function DailyLogForm({ onSuccess }: { onSuccess?: () => void }) {
     deliverables: [''],
   });
 
-  const userProjects = projects.filter(p =>
-    p.members.some(m => m.userId === currentUser?.id)
-  );
-
-  const projectTasks = tasks.filter(t =>
-    t.projectId === form.projectId && t.assigneeId === currentUser?.id
+  const projectTasks = tasks.filter((t: any) =>
+    t.projectId === form.projectId && (t.assigneeId === (session?.user as any)?.id)
   );
 
   const addDeliverable = () => setForm(f => ({ ...f, deliverables: [...f.deliverables, ''] }));
@@ -49,38 +47,25 @@ export function DailyLogForm({ onSuccess }: { onSuccess?: () => void }) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser || !form.projectId || !form.summary) return;
+    if (!form.projectId || !form.summary) return;
 
-    setSubmitting(true);
-    await new Promise(r => setTimeout(r, 600));
-
-    const project = projects.find(p => p.id === form.projectId);
-    const task = tasks.find(t => t.id === form.taskId);
-
-    const log: DailyLog = {
-      id: `dl-${Date.now()}`,
-      userId: currentUser.id,
-      user: currentUser,
-      projectId: form.projectId,
-      project,
-      taskId: form.taskId || undefined,
-      task,
-      date: new Date().toISOString().split('T')[0],
-      status: form.status,
-      summary: form.summary,
-      hoursWorked: parseFloat(form.hoursWorked) || 0,
-      deliverablesCompleted: form.deliverables.filter(d => d.trim()),
-      blockers: form.blockers,
-      tomorrowPlan: form.tomorrowPlan,
-      progressPercent: form.progressPercent,
-      attachments: [],
-      createdAt: new Date().toISOString(),
-    };
-
-    addDailyLog(log);
-    setSubmitting(false);
-    setSubmitted(true);
-    onSuccess?.();
+    try {
+      await submitLog.mutateAsync({
+        projectId: form.projectId,
+        taskId: form.taskId || undefined,
+        status: form.status,
+        summary: form.summary,
+        hoursWorked: parseFloat(form.hoursWorked) || 0,
+        blockers: form.blockers,
+        tomorrowPlan: form.tomorrowPlan,
+        progressPercent: form.progressPercent,
+        deliverables: form.deliverables.filter(d => d.trim()),
+      });
+      setSubmitted(true);
+      onSuccess?.();
+    } catch {
+      // error handled by React Query
+    }
   };
 
   if (submitted) {
@@ -119,7 +104,7 @@ export function DailyLogForm({ onSuccess }: { onSuccess?: () => void }) {
             className="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
           >
             <option value="">Select project</option>
-            {userProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
         <div>
@@ -131,7 +116,7 @@ export function DailyLogForm({ onSuccess }: { onSuccess?: () => void }) {
             className="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
           >
             <option value="">General work</option>
-            {projectTasks.map(t => <option key={t.id} value={t.id}>{t.title}</option>)}
+            {projectTasks.map((t: any) => <option key={t.id} value={t.id}>{t.title}</option>)}
           </select>
         </div>
       </div>
@@ -142,7 +127,7 @@ export function DailyLogForm({ onSuccess }: { onSuccess?: () => void }) {
           <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Status</label>
           <select
             value={form.status}
-            onChange={e => setForm(f => ({ ...f, status: e.target.value as LogStatus }))}
+            onChange={e => setForm(f => ({ ...f, status: e.target.value }))}
             className="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
           >
             {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
@@ -256,9 +241,9 @@ export function DailyLogForm({ onSuccess }: { onSuccess?: () => void }) {
         />
       </div>
 
-      <Button type="submit" loading={submitting} className="w-full gap-2">
+      <Button type="submit" disabled={submitLog.isPending} className="w-full gap-2">
         <Send className="h-4 w-4" />
-        Submit Daily Log
+        {submitLog.isPending ? 'Submitting...' : 'Submit Daily Log'}
       </Button>
     </form>
   );

@@ -1,19 +1,16 @@
 'use client';
 import React, { useState } from 'react';
-import { Plus, Search, Filter, Grid3X3, List, SlidersHorizontal } from 'lucide-react';
+import { Plus, Search, Grid3X3, List, SlidersHorizontal, Loader2 } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import { Header } from '@/components/layout/header';
 import { ProjectCard } from '@/components/projects/project-card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import { useAppStore } from '@/store/app-store';
-import { ProjectStatus, TaskPriority } from '@/types';
+import { useProjects } from '@/hooks/use-projects';
 import { getStatusColor, getStatusDot, formatDate, formatCurrency } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 
-const STATUS_FILTERS: { value: ProjectStatus | 'ALL'; label: string }[] = [
+const STATUS_FILTERS = [
   { value: 'ALL', label: 'All' },
   { value: 'ACTIVE', label: 'Active' },
   { value: 'AT_RISK', label: 'At Risk' },
@@ -23,19 +20,20 @@ const STATUS_FILTERS: { value: ProjectStatus | 'ALL'; label: string }[] = [
 ];
 
 export default function ProjectsPage() {
-  const { projects, currentUser } = useAppStore();
+  const { data: session } = useSession();
+  const { data: projects = [], isLoading } = useProjects();
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'ALL'>('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
   const [view, setView] = useState<'grid' | 'list'>('grid');
 
-  const filtered = projects.filter(p => {
+  const filtered = projects.filter((p: any) => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
-      p.client.toLowerCase().includes(search.toLowerCase());
+      (p.client ?? '').toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === 'ALL' || p.status === statusFilter;
     return matchSearch && matchStatus;
   });
 
-  const isManager = currentUser?.role === 'PROJECT_MANAGER' || currentUser?.role === 'ADMIN';
+  const isManager = session?.user?.role === 'PROJECT_MANAGER' || session?.user?.role === 'ADMIN';
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -99,60 +97,78 @@ export default function ProjectsPage() {
             >
               {f.label}
               <span className={cn('ml-1.5 rounded-full px-1.5 text-[10px]', statusFilter === f.value ? 'bg-white/20' : 'bg-slate-100 dark:bg-slate-800')}>
-                {f.value === 'ALL' ? projects.length : projects.filter(p => p.status === f.value).length}
+                {f.value === 'ALL' ? projects.length : projects.filter((p: any) => p.status === f.value).length}
               </span>
             </button>
           ))}
         </div>
 
-        {/* Results */}
-        <p className="text-xs text-slate-500 dark:text-slate-400">{filtered.length} project{filtered.length !== 1 ? 's' : ''}</p>
-
-        {view === 'grid' ? (
-          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-            {filtered.map(p => <ProjectCard key={p.id} project={p} />)}
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
           </div>
         ) : (
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-100 dark:border-slate-800">
-                  {['Project', 'Client', 'Status', 'Progress', 'Budget', 'Due Date', 'Team'].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((p, i) => (
-                  <tr key={p.id} className={cn('border-b border-slate-50 hover:bg-slate-50/50 dark:border-slate-800/50 dark:hover:bg-slate-800/30', i === filtered.length - 1 && 'border-0')}>
-                    <td className="px-4 py-3">
-                      <Link href={`/projects/${p.id}`} className="text-sm font-medium text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400">
-                        {p.name}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">{p.client}</td>
-                    <td className="px-4 py-3">
-                      <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium', getStatusColor(p.status))}>
-                        <span className={cn('h-1.5 w-1.5 rounded-full', getStatusDot(p.status))} />
-                        {p.status.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 w-20 rounded-full bg-slate-100 dark:bg-slate-800">
-                          <div className="h-full rounded-full bg-indigo-500" style={{ width: `${p.completionPercent}%` }} />
-                        </div>
-                        <span className="text-xs text-slate-600 dark:text-slate-400">{p.completionPercent}%</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">{formatCurrency(p.spentBudget)} / {formatCurrency(p.budget)}</td>
-                    <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">{formatDate(p.endDate)}</td>
-                    <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">{p.members.length} members</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <p className="text-xs text-slate-500 dark:text-slate-400">{filtered.length} project{filtered.length !== 1 ? 's' : ''}</p>
+
+            {view === 'grid' ? (
+              <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+                {filtered.map((p: any) => <ProjectCard key={p.id} project={p} />)}
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-slate-100 dark:border-slate-800">
+                      {['Project', 'Client', 'Status', 'Progress', 'Budget', 'Due Date', 'Team'].map(h => (
+                        <th key={h} className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map((p: any, i: number) => (
+                      <tr key={p.id} className={cn('border-b border-slate-50 hover:bg-slate-50/50 dark:border-slate-800/50 dark:hover:bg-slate-800/30', i === filtered.length - 1 && 'border-0')}>
+                        <td className="px-4 py-3">
+                          <Link href={`/projects/${p.id}`} className="text-sm font-medium text-slate-900 dark:text-slate-100 hover:text-indigo-600 dark:hover:text-indigo-400">
+                            {p.name}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-500 dark:text-slate-400">{p.client}</td>
+                        <td className="px-4 py-3">
+                          <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium', getStatusColor(p.status))}>
+                            <span className={cn('h-1.5 w-1.5 rounded-full', getStatusDot(p.status))} />
+                            {p.status.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="h-1.5 w-20 rounded-full bg-slate-100 dark:bg-slate-800">
+                              <div className="h-full rounded-full bg-indigo-500" style={{ width: `${p.completionPercent ?? 0}%` }} />
+                            </div>
+                            <span className="text-xs text-slate-600 dark:text-slate-400">{p.completionPercent ?? 0}%</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">
+                          {p.spentBudget != null ? formatCurrency(p.spentBudget) : '—'} / {p.budget != null ? formatCurrency(p.budget) : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">{formatDate(p.endDate)}</td>
+                        <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">{p.members?.length ?? 0} members</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {filtered.length === 0 && !isLoading && (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">No projects found</p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  {isManager ? 'Create your first project to get started.' : 'No projects have been assigned to you yet.'}
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

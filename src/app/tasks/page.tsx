@@ -1,25 +1,29 @@
 'use client';
 import React, { useState } from 'react';
-import { Plus, Search, Kanban, List, X } from 'lucide-react';
+import { Plus, Search, Kanban, List, Loader2 } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import { KanbanBoard } from '@/components/tasks/kanban-board';
 import { TaskDetail } from '@/components/tasks/task-detail';
 import { Button } from '@/components/ui/button';
-import { useAppStore } from '@/store/app-store';
+import { useTasks } from '@/hooks/use-tasks';
+import { useProjects } from '@/hooks/use-projects';
+import { useUIStore } from '@/store/app-store';
 import { getStatusColor, getStatusDot, getPriorityColor, formatDate } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { getInitials } from '@/lib/utils';
 
 export default function TasksPage() {
-  const { tasks, projects, selectedTaskId, selectTask } = useAppStore();
+  const { selectedTaskId, selectTask } = useUIStore();
+  const { data: tasks = [], isLoading: tasksLoading } = useTasks();
+  const { data: projects = [] } = useProjects();
   const [search, setSearch] = useState('');
   const [projectFilter, setProjectFilter] = useState('ALL');
   const [view, setView] = useState<'kanban' | 'list'>('kanban');
 
-  const selectedTask = tasks.find(t => t.id === selectedTaskId);
+  const selectedTask = tasks.find((t: any) => t.id === selectedTaskId);
 
-  const filtered = tasks.filter(t => {
+  const filtered = tasks.filter((t: any) => {
     const matchSearch = t.title.toLowerCase().includes(search.toLowerCase());
     const matchProject = projectFilter === 'ALL' || t.projectId === projectFilter;
     return matchSearch && matchProject;
@@ -30,7 +34,6 @@ export default function TasksPage() {
       <Header title="Tasks" />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Main content */}
         <div className={cn('flex flex-1 flex-col overflow-hidden transition-all', selectedTask ? 'mr-0' : '')}>
           {/* Toolbar */}
           <div className="flex items-center gap-3 border-b border-slate-200 px-6 py-3 dark:border-slate-800">
@@ -51,7 +54,7 @@ export default function TasksPage() {
               className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             >
               <option value="ALL">All Projects</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
 
             <div className="ml-auto flex items-center gap-2">
@@ -78,7 +81,11 @@ export default function TasksPage() {
 
           {/* Board */}
           <div className="flex-1 overflow-auto p-6">
-            {view === 'kanban' ? (
+            {tasksLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
+              </div>
+            ) : view === 'kanban' ? (
               <KanbanBoard tasks={filtered} />
             ) : (
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
@@ -91,8 +98,8 @@ export default function TasksPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filtered.map((t, i) => {
-                      const proj = projects.find(p => p.id === t.projectId);
+                    {filtered.map((t: any, i: number) => {
+                      const proj = projects.find((p: any) => p.id === t.projectId);
                       return (
                         <tr
                           key={t.id}
@@ -100,14 +107,16 @@ export default function TasksPage() {
                           className={cn('cursor-pointer border-b border-slate-50 hover:bg-slate-50/50 dark:border-slate-800/50 dark:hover:bg-slate-800/30', i === filtered.length - 1 && 'border-0')}
                         >
                           <td className="px-4 py-3 text-sm font-medium text-slate-900 dark:text-slate-100 max-w-[200px] truncate">{t.title}</td>
-                          <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400 max-w-[120px] truncate">{proj?.name}</td>
+                          <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400 max-w-[120px] truncate">{proj?.name ?? '—'}</td>
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-1.5">
-                              <Avatar className="h-5 w-5">
-                                <AvatarFallback name={t.assignee.name} className="text-[8px]">{getInitials(t.assignee.name)}</AvatarFallback>
-                              </Avatar>
-                              <span className="text-xs text-slate-600 dark:text-slate-400">{t.assignee.name.split(' ')[0]}</span>
-                            </div>
+                            {t.assignee ? (
+                              <div className="flex items-center gap-1.5">
+                                <Avatar className="h-5 w-5">
+                                  <AvatarFallback name={t.assignee.name} className="text-[8px]">{getInitials(t.assignee.name)}</AvatarFallback>
+                                </Avatar>
+                                <span className="text-xs text-slate-600 dark:text-slate-400">{t.assignee.name?.split(' ')[0]}</span>
+                              </div>
+                            ) : <span className="text-xs text-slate-400">Unassigned</span>}
                           </td>
                           <td className="px-4 py-3">
                             <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium', getStatusColor(t.status))}>
@@ -119,9 +128,9 @@ export default function TasksPage() {
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-2">
                               <div className="h-1.5 w-16 rounded-full bg-slate-100 dark:bg-slate-800">
-                                <div className="h-full rounded-full bg-indigo-500" style={{ width: `${t.progressPercent}%` }} />
+                                <div className="h-full rounded-full bg-indigo-500" style={{ width: `${t.progressPercent ?? 0}%` }} />
                               </div>
-                              <span className="text-xs text-slate-500">{t.progressPercent}%</span>
+                              <span className="text-xs text-slate-500">{t.progressPercent ?? 0}%</span>
                             </div>
                           </td>
                           <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">{formatDate(t.dueDate)}</td>

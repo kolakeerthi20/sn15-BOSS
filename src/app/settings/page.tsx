@@ -1,23 +1,27 @@
 'use client';
 import React, { useState } from 'react';
-import { User, Bell, Shield, Palette, CreditCard, Building2, Save } from 'lucide-react';
+import { User, Bell, Shield, Palette, Save } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import { Header } from '@/components/layout/header';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { useAppStore } from '@/store/app-store';
+import { useUIStore } from '@/store/app-store';
 import { getInitials } from '@/lib/utils';
 
 export default function SettingsPage() {
-  const { currentUser, darkMode, toggleDarkMode } = useAppStore();
+  const { data: session } = useSession();
+  const { darkMode, toggleDarkMode } = useUIStore();
   const [saved, setSaved] = useState(false);
 
   const handleSave = () => {
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
+
+  const user = session?.user;
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -39,39 +43,28 @@ export default function SettingsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
-                {currentUser && (
+                {user && (
                   <>
                     <div className="flex items-center gap-4">
                       <Avatar className="h-16 w-16">
-                        <AvatarFallback name={currentUser.name} className="text-lg">{getInitials(currentUser.name)}</AvatarFallback>
+                        {user.image && <AvatarImage src={user.image} alt={user.name ?? ''} />}
+                        <AvatarFallback name={user.name ?? ''} className="text-lg">
+                          {getInitials(user.name ?? user.email ?? '?')}
+                        </AvatarFallback>
                       </Avatar>
                       <div>
-                        <Button variant="outline" size="sm">Change Avatar</Button>
-                        <p className="mt-1 text-xs text-slate-500">JPG or PNG, max 2MB</p>
+                        <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{user.name}</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">{user.email}</p>
+                        <p className="mt-1 text-xs text-indigo-600 dark:text-indigo-400 font-medium">
+                          {(user as any).role?.replace('_', ' ')}
+                        </p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <Input label="Full Name" defaultValue={currentUser.name} />
-                      <Input label="Email" type="email" defaultValue={currentUser.email} />
-                      <Input label="Designation" defaultValue={currentUser.designation} />
-                      <Input label="Department" defaultValue={currentUser.department} />
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                      <p className="text-xs text-slate-600 dark:text-slate-400">
+                        Your profile information is managed through Google. To update your name or profile picture, visit your Google account settings.
+                      </p>
                     </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">Skills</label>
-                      <div className="flex flex-wrap gap-2">
-                        {currentUser.skills.map(s => (
-                          <span key={s} className="rounded-full bg-indigo-50 px-3 py-1 text-xs text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400">{s}</span>
-                        ))}
-                        <button className="rounded-full border border-dashed border-indigo-300 px-3 py-1 text-xs text-indigo-500 hover:bg-indigo-50">+ Add skill</button>
-                      </div>
-                    </div>
-                    {currentUser.billableRate && (
-                      <Input label="Billable Rate ($/hr)" type="number" defaultValue={String(currentUser.billableRate)} />
-                    )}
-                    <Button onClick={handleSave} className="gap-2">
-                      <Save className="h-4 w-4" />
-                      {saved ? 'Saved!' : 'Save Changes'}
-                    </Button>
                   </>
                 )}
               </CardContent>
@@ -142,13 +135,6 @@ export default function SettingsPage() {
                     </button>
                   </div>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Default Task View</p>
-                  <select className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100">
-                    <option>Kanban Board</option>
-                    <option>List View</option>
-                  </select>
-                </div>
               </CardContent>
             </Card>
           </TabsContent>
@@ -161,23 +147,15 @@ export default function SettingsPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-3">
-                  <Input label="Current Password" type="password" placeholder="••••••••" />
-                  <Input label="New Password" type="password" placeholder="Min 12 characters" />
-                  <Input label="Confirm New Password" type="password" placeholder="••••••••" />
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Authentication</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    You are signed in via Google OAuth. Password management is handled by Google.
+                  </p>
                 </div>
-                <Button onClick={handleSave} variant="outline" className="gap-2">
-                  <Shield className="h-4 w-4" />
-                  {saved ? 'Updated!' : 'Update Password'}
-                </Button>
-                <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
-                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Two-Factor Authentication</p>
-                  <Button variant="outline" size="sm">Enable 2FA</Button>
-                </div>
-                <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
                   <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Active Sessions</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">1 session active — macOS Chrome</p>
-                  <Button variant="destructive" size="sm">Revoke All Sessions</Button>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">1 session active</p>
                 </div>
               </CardContent>
             </Card>

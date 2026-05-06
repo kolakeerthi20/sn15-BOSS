@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React from 'react';
 import { Download, RefreshCw, TrendingUp, BarChart3, Zap } from 'lucide-react';
 import { Header } from '@/components/layout/header';
 import {
@@ -14,20 +14,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { useAppStore } from '@/store/app-store';
-import { MOCK_ANALYTICS } from '@/lib/mock-data';
-import { getInitials, formatCurrency } from '@/lib/utils';
+import { useResources } from '@/hooks/use-resources';
+import { useTasks } from '@/hooks/use-tasks';
+import { getInitials } from '@/lib/utils';
+import { Progress } from '@/components/ui/progress';
 
 const AI_INSIGHTS = [
-  { type: 'warning', icon: '⚠️', text: 'Mobile App v2.0 is 25% behind ideal burndown. At current velocity, it will miss the deadline by 8 days.' },
-  { type: 'info', icon: '📊', text: 'James Okonkwo is at 95% utilization across 2 projects. Consider rebalancing before adding new tasks.' },
-  { type: 'success', icon: '🚀', text: 'AI Analytics Dashboard is tracking 12% ahead of schedule. Team velocity has increased 18% this sprint.' },
-  { type: 'warning', icon: '💰', text: 'E-Commerce project budget burn is accelerating. At current rate, budget will be exhausted 3 weeks before completion.' },
-  { type: 'info', icon: '🔮', text: 'Sprint 5 velocity prediction: 41 story points based on team patterns. Consider committing to 38 for buffer.' },
+  { type: 'warning', icon: '⚠️', text: 'Monitor projects approaching their deadline — review burndown trends to identify delays early.' },
+  { type: 'info', icon: '📊', text: 'Check resource utilization regularly to prevent overloading team members.' },
+  { type: 'success', icon: '🚀', text: 'Teams logging daily stand their highest chance of on-time delivery. Keep the streak going.' },
+  { type: 'info', icon: '🔮', text: 'Use velocity trends from recent sprints to set realistic commitments for the next sprint.' },
 ];
 
 export default function AnalyticsPage() {
-  const { projects, tasks, users } = useAppStore();
+  const { data: resources = [] } = useResources();
+  const { data: tasks = [] } = useTasks();
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -120,14 +121,15 @@ export default function AnalyticsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
-                  {users.map(user => {
-                    const userTasks = tasks.filter(t => t.assigneeId === user.id);
-                    const done = userTasks.filter(t => t.status === 'COMPLETED').length;
-                    const hours = userTasks.reduce((a, t) => a + t.actualHours, 0);
+                  {resources.map((user: any) => {
+                    const userTasks = tasks.filter((t: any) => t.assigneeId === user.id);
+                    const done = userTasks.filter((t: any) => t.status === 'COMPLETED').length;
+                    const hours = userTasks.reduce((a: number, t: any) => a + (t.actualHours ?? 0), 0);
                     const avgProgress = userTasks.length > 0
-                      ? Math.round(userTasks.reduce((a, t) => a + t.progressPercent, 0) / userTasks.length)
+                      ? Math.round(userTasks.reduce((a: number, t: any) => a + (t.progressPercent ?? 0), 0) / userTasks.length)
                       : 0;
-                    const score = Math.min(100, Math.round((done * 10) + (user.utilization * 0.3) + (avgProgress * 0.2)));
+                    const util = user.utilization ?? 0;
+                    const score = Math.min(100, Math.round((done * 10) + (util * 0.3) + (avgProgress * 0.2)));
                     return (
                       <tr key={user.id} className="py-3">
                         <td className="py-3 pr-4">
@@ -141,7 +143,7 @@ export default function AnalyticsPage() {
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 text-xs text-slate-500 dark:text-slate-400">{user.department}</td>
+                        <td className="py-3 text-xs text-slate-500 dark:text-slate-400">{user.department ?? '—'}</td>
                         <td className="py-3 text-xs font-semibold text-slate-900 dark:text-slate-100">{done}</td>
                         <td className="py-3 text-xs text-slate-600 dark:text-slate-400">{hours}h</td>
                         <td className="py-3">
@@ -153,8 +155,8 @@ export default function AnalyticsPage() {
                           </div>
                         </td>
                         <td className="py-3">
-                          <span className={`text-xs font-bold ${user.utilization > 95 ? 'text-red-600' : user.utilization > 85 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                            {user.utilization}%
+                          <span className={`text-xs font-bold ${util > 95 ? 'text-red-600' : util > 85 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                            {util}%
                           </span>
                         </td>
                         <td className="py-3">
@@ -166,6 +168,11 @@ export default function AnalyticsPage() {
                       </tr>
                     );
                   })}
+                  {resources.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-sm text-slate-500">No data yet.</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>

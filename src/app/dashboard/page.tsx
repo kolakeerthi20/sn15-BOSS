@@ -4,29 +4,43 @@ import {
   FolderKanban, Users, AlertTriangle, TrendingUp, CheckSquare,
   Clock, Target, Activity, Flame, CalendarClock,
 } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 import { Header } from '@/components/layout/header';
 import { StatsCard } from '@/components/dashboard/stats-card';
 import { ActivityFeed } from '@/components/dashboard/activity-feed';
 import { ProjectCard } from '@/components/projects/project-card';
 import { TeamProductivityChart, ProjectHealthChart, StatusDistributionChart } from '@/components/analytics/charts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { useAppStore } from '@/store/app-store';
-import { MOCK_DASHBOARD_STATS, MOCK_ANALYTICS } from '@/lib/mock-data';
+import { useProjects } from '@/hooks/use-projects';
+import { useTasks } from '@/hooks/use-tasks';
+import { useResources } from '@/hooks/use-resources';
 import { formatCurrency, getInitials, getUtilizationColor } from '@/lib/utils';
 
 export default function DashboardPage() {
-  const { projects, tasks, currentUser } = useAppStore();
-  const stats = MOCK_DASHBOARD_STATS;
-  const isManager = currentUser?.role === 'PROJECT_MANAGER' || currentUser?.role === 'ADMIN';
-  const atRiskProjects = projects.filter(p => p.status === 'AT_RISK');
-  const blockedTasks = tasks.filter(t => t.status === 'BLOCKED');
+  const { data: session } = useSession();
+  const { data: projects = [] } = useProjects();
+  const { data: tasks = [] } = useTasks();
+  const { data: resources = [] } = useResources();
+
+  const atRiskProjects = projects.filter((p: any) => p.status === 'AT_RISK');
+  const blockedTasks = tasks.filter((t: any) => t.status === 'BLOCKED');
+  const activeProjects = projects.filter((p: any) => p.status === 'ACTIVE' || p.status === 'AT_RISK');
+  const completedTasks = tasks.filter((t: any) => t.status === 'COMPLETED');
+  const overdueTasks = tasks.filter((t: any) => {
+    const due = t.dueDate ? new Date(t.dueDate) : null;
+    return due && due < new Date() && t.status !== 'COMPLETED';
+  });
+  const avgUtilization = resources.length > 0
+    ? Math.round(resources.reduce((a: number, r: any) => a + (r.utilization ?? 0), 0) / resources.length)
+    : 0;
+
+  const userName = session?.user?.name?.split(' ')[0] ?? 'there';
 
   return (
     <div className="flex flex-col min-h-screen">
-      <Header title={`Good ${getTimeOfDay()}, ${currentUser?.name.split(' ')[0]} 👋`} />
+      <Header title={`Good ${getTimeOfDay()}, ${userName} 👋`} />
 
       <div className="flex-1 p-6 space-y-6">
         {/* Alert banner */}
@@ -45,72 +59,68 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatsCard
             title="Active Projects"
-            value={stats.activeProjects}
-            subtitle={`${stats.totalProjects} total`}
+            value={activeProjects.length}
+            subtitle={`${projects.length} total`}
             icon={FolderKanban}
             iconBg="bg-indigo-50 dark:bg-indigo-950"
             iconColor="text-indigo-600 dark:text-indigo-400"
-            trend={{ value: 12, direction: 'up', label: 'vs last month' }}
           />
           <StatsCard
             title="Team Utilization"
-            value={`${stats.avgUtilization.toFixed(0)}%`}
-            subtitle={`${stats.activeResources}/${stats.totalResources} active`}
+            value={`${avgUtilization}%`}
+            subtitle={`${resources.filter((r: any) => r.isActive).length}/${resources.length} active`}
             icon={Users}
             iconBg="bg-emerald-50 dark:bg-emerald-950"
             iconColor="text-emerald-600 dark:text-emerald-400"
-            trend={{ value: 5, direction: 'up', label: 'vs last week' }}
           />
           <StatsCard
             title="Tasks Completed"
-            value={stats.tasksCompletedToday}
-            subtitle="Today's output"
+            value={completedTasks.length}
+            subtitle="Total completed"
             icon={CheckSquare}
             iconBg="bg-violet-50 dark:bg-violet-950"
             iconColor="text-violet-600 dark:text-violet-400"
-            trend={{ value: 8, direction: 'up', label: 'vs yesterday' }}
           />
           <StatsCard
             title="Overdue Tasks"
-            value={stats.overdueTasks}
-            subtitle={`${stats.upcomingDeadlines} due this week`}
+            value={overdueTasks.length}
+            subtitle={`${blockedTasks.length} blocked`}
             icon={AlertTriangle}
             iconBg="bg-red-50 dark:bg-red-950"
             iconColor="text-red-600 dark:text-red-400"
-            trend={{ value: 2, direction: 'down', label: 'vs last week' }}
           />
         </div>
 
         {/* Secondary stats */}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatsCard
-            title="Productivity Score"
-            value={`${stats.productivityScore}/100`}
-            subtitle="Team-wide average"
+            title="Total Tasks"
+            value={tasks.length}
+            subtitle="All statuses"
             icon={TrendingUp}
             iconBg="bg-amber-50 dark:bg-amber-950"
             iconColor="text-amber-600 dark:text-amber-400"
           />
           <StatsCard
-            title="Monthly Burn Rate"
-            value={formatCurrency(stats.burnRate)}
-            subtitle="Across all projects"
+            title="In Progress"
+            value={tasks.filter((t: any) => t.status === 'IN_PROGRESS').length}
+            subtitle="Currently active"
             icon={Flame}
             iconBg="bg-orange-50 dark:bg-orange-950"
             iconColor="text-orange-600 dark:text-orange-400"
           />
           <StatsCard
-            title="Delayed Projects"
-            value={stats.delayedProjects}
-            subtitle="Needs escalation"
+            title="At Risk"
+            value={atRiskProjects.length}
+            subtitle="Needs attention"
             icon={CalendarClock}
             iconBg="bg-rose-50 dark:bg-rose-950"
             iconColor="text-rose-600 dark:text-rose-400"
           />
           <StatsCard
-            title="Upcoming Deadlines"
-            value={stats.upcomingDeadlines}
-            subtitle="Next 7 days"
+            title="Team Members"
+            value={resources.length}
+            subtitle={`${resources.filter((r: any) => r.utilization > 95).length} overloaded`}
             icon={Clock}
             iconBg="bg-cyan-50 dark:bg-cyan-950"
             iconColor="text-cyan-600 dark:text-cyan-400"
@@ -119,12 +129,9 @@ export default function DashboardPage() {
 
         {/* Main content grid */}
         <div className="grid gap-6 lg:grid-cols-3">
-          {/* Activity feed */}
           <div className="lg:col-span-2">
             <ActivityFeed />
           </div>
-
-          {/* Project health */}
           <div>
             <ProjectHealthChart />
           </div>
@@ -147,44 +154,14 @@ export default function DashboardPage() {
             <a href="/projects" className="text-sm text-indigo-600 hover:underline dark:text-indigo-400">View all</a>
           </div>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {projects.filter(p => p.status === 'ACTIVE' || p.status === 'AT_RISK').map(p => (
+            {activeProjects.slice(0, 6).map((p: any) => (
               <ProjectCard key={p.id} project={p} />
             ))}
           </div>
         </div>
 
-        {/* Top performers */}
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Target className="h-4 w-4 text-indigo-600" />
-                Top Performers This Week
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {MOCK_ANALYTICS.topPerformers.map((p, i) => (
-                <div key={p.user.id} className="flex items-center gap-3">
-                  <span className="w-4 text-xs font-bold text-slate-400">{i + 1}</span>
-                  <Avatar className="h-7 w-7">
-                    <AvatarFallback name={p.user.name} className="text-xs">{getInitials(p.user.name)}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-slate-900 dark:text-slate-100 truncate">{p.user.name}</p>
-                    <p className="text-[10px] text-slate-500">{p.user.designation}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400">{p.score}</p>
-                    <p className="text-[10px] text-slate-400">{p.tasksCompleted} tasks</p>
-                  </div>
-                  <div className="w-16">
-                    <Progress value={p.score} className="h-1.5" indicatorClassName="bg-indigo-500" />
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-
+        {/* Resource utilization */}
+        {resources.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
@@ -193,24 +170,24 @@ export default function DashboardPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {MOCK_ANALYTICS.resourceUtilization.slice(0, 6).map(r => (
-                <div key={r.userId} className="flex items-center gap-3">
+              {resources.slice(0, 6).map((r: any) => (
+                <div key={r.id} className="flex items-center gap-3">
                   <Avatar className="h-7 w-7">
-                    <AvatarFallback name={r.user.name} className="text-xs">{getInitials(r.user.name)}</AvatarFallback>
+                    <AvatarFallback name={r.name} className="text-xs">{getInitials(r.name)}</AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between mb-0.5">
-                      <p className="text-xs font-medium text-slate-900 dark:text-slate-100 truncate">{r.user.name}</p>
-                      <span className={`text-xs font-bold ${getUtilizationColor(r.utilizationPercent)}`}>
-                        {r.utilizationPercent}%
+                      <p className="text-xs font-medium text-slate-900 dark:text-slate-100 truncate">{r.name}</p>
+                      <span className={`text-xs font-bold ${getUtilizationColor(r.utilization ?? 0)}`}>
+                        {r.utilization ?? 0}%
                       </span>
                     </div>
                     <Progress
-                      value={r.utilizationPercent}
+                      value={r.utilization ?? 0}
                       className="h-1.5"
                       indicatorClassName={
-                        r.utilizationPercent > 95 ? 'bg-red-500' :
-                        r.utilizationPercent > 85 ? 'bg-amber-500' : 'bg-emerald-500'
+                        (r.utilization ?? 0) > 95 ? 'bg-red-500' :
+                        (r.utilization ?? 0) > 85 ? 'bg-amber-500' : 'bg-emerald-500'
                       }
                     />
                   </div>
@@ -218,7 +195,7 @@ export default function DashboardPage() {
               ))}
             </CardContent>
           </Card>
-        </div>
+        )}
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 'use client';
-import React, { useState } from 'react';
+import React from 'react';
 import { useParams } from 'next/navigation';
-import { ArrowLeft, Users, Calendar, DollarSign, AlertTriangle, CheckCircle2, Clock, Kanban, List, BarChart2 } from 'lucide-react';
+import { ArrowLeft, Users, CheckCircle2, Clock, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { Header } from '@/components/layout/header';
 import { KanbanBoard } from '@/components/tasks/kanban-board';
@@ -9,18 +9,32 @@ import { TaskDetail } from '@/components/tasks/task-detail';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { useAppStore } from '@/store/app-store';
+import { useProject } from '@/hooks/use-projects';
+import { useTasks } from '@/hooks/use-tasks';
+import { useUIStore } from '@/store/app-store';
 import { formatDate, formatCurrency, calcBudgetBurnPercent, daysUntil, getInitials, getStatusColor, getStatusDot, getHealthColor } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
 export default function ProjectDetailPage() {
   const params = useParams();
-  const { getProjectById, getTasksByProject, selectedTaskId, selectTask } = useAppStore();
-  const project = getProjectById(params.id as string);
-  const tasks = getTasksByProject(params.id as string);
-  const selectedTask = tasks.find(t => t.id === selectedTaskId);
+  const id = params.id as string;
+  const { data: project, isLoading } = useProject(id);
+  const { data: allTasks = [] } = useTasks({ projectId: id });
+  const { selectedTaskId, selectTask } = useUIStore();
+
+  const selectedTask = allTasks.find((t: any) => t.id === selectedTaskId);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <Header />
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
+        </div>
+      </div>
+    );
+  }
 
   if (!project) {
     return (
@@ -34,7 +48,7 @@ export default function ProjectDetailPage() {
   }
 
   const daysLeft = daysUntil(project.endDate);
-  const budgetBurn = calcBudgetBurnPercent(project.spentBudget, project.budget);
+  const budgetBurn = calcBudgetBurnPercent(project.spentBudget ?? 0, project.budget ?? 1);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -55,19 +69,23 @@ export default function ProjectDetailPage() {
                     <span className={cn('h-1.5 w-1.5 rounded-full', getStatusDot(project.status))} />
                     {project.status.replace('_', ' ')}
                   </span>
-                  <span className={cn('text-xs font-medium', getHealthColor(project.healthScore))}>
-                    Health: {project.healthScore}/100
-                  </span>
+                  {project.healthScore != null && (
+                    <span className={cn('text-xs font-medium', getHealthColor(project.healthScore))}>
+                      Health: {project.healthScore}/100
+                    </span>
+                  )}
                 </div>
                 <h1 className="text-xl font-bold text-slate-900 dark:text-white">{project.name}</h1>
-                <p className="text-sm text-slate-500 dark:text-slate-400">{project.client} · {project.description.slice(0, 80)}...</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {project.client}{project.description ? ` · ${project.description.slice(0, 80)}${project.description.length > 80 ? '...' : ''}` : ''}
+                </p>
               </div>
 
               {/* Stats strip */}
               <div className="hidden lg:flex items-center gap-6">
                 <div className="text-center">
                   <p className="text-xs text-slate-500 dark:text-slate-400">Progress</p>
-                  <p className="text-lg font-bold text-slate-900 dark:text-white">{project.completionPercent}%</p>
+                  <p className="text-lg font-bold text-slate-900 dark:text-white">{project.completionPercent ?? 0}%</p>
                 </div>
                 <div className="text-center">
                   <p className="text-xs text-slate-500 dark:text-slate-400">Days Left</p>
@@ -75,32 +93,35 @@ export default function ProjectDetailPage() {
                     {daysLeft < 0 ? `${Math.abs(daysLeft)}d over` : `${daysLeft}d`}
                   </p>
                 </div>
-                <div className="text-center">
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Budget</p>
-                  <p className={cn('text-lg font-bold', budgetBurn > 90 ? 'text-red-600' : 'text-slate-900 dark:text-white')}>{budgetBurn}%</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Team</p>
-                  <div className="flex -space-x-1.5 justify-center mt-0.5">
-                    {project.members.slice(0, 4).map(m => (
-                      <Avatar key={m.userId} className="h-6 w-6 border border-white dark:border-slate-900">
-                        <AvatarFallback name={m.user.name} className="text-[9px]">{getInitials(m.user.name)}</AvatarFallback>
-                      </Avatar>
-                    ))}
+                {project.budget != null && (
+                  <div className="text-center">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Budget</p>
+                    <p className={cn('text-lg font-bold', budgetBurn > 90 ? 'text-red-600' : 'text-slate-900 dark:text-white')}>{budgetBurn}%</p>
                   </div>
-                </div>
+                )}
+                {(project.members ?? []).length > 0 && (
+                  <div className="text-center">
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Team</p>
+                    <div className="flex -space-x-1.5 justify-center mt-0.5">
+                      {project.members.slice(0, 4).map((m: any) => (
+                        <Avatar key={m.userId ?? m.id} className="h-6 w-6 border border-white dark:border-slate-900">
+                          <AvatarFallback name={m.user?.name ?? ''} className="text-[9px]">{getInitials(m.user?.name ?? '?')}</AvatarFallback>
+                        </Avatar>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Progress bar */}
             <div className="mt-3">
-              <Progress value={project.completionPercent} className="h-2" />
+              <Progress value={project.completionPercent ?? 0} className="h-2" />
             </div>
 
             {/* Milestones */}
-            {project.milestones.length > 0 && (
+            {(project.milestones ?? []).length > 0 && (
               <div className="mt-3 flex flex-wrap gap-2">
-                {project.milestones.map(m => (
+                {project.milestones.map((m: any) => (
                   <span
                     key={m.id}
                     className={cn(
@@ -143,7 +164,7 @@ export default function ProjectDetailPage() {
 
           {/* Board content */}
           <div className="flex-1 overflow-auto p-6">
-            <KanbanBoard tasks={tasks} projectId={project.id} />
+            <KanbanBoard tasks={allTasks} projectId={project.id} />
           </div>
         </div>
 

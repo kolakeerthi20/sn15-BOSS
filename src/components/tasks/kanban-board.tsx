@@ -1,39 +1,42 @@
 'use client';
 import React, { useState } from 'react';
-import { Plus, MoreHorizontal, Clock, AlertTriangle, Flag } from 'lucide-react';
-import { Task, TaskStatus } from '@/types';
+import { Plus, Clock, AlertTriangle, Flag } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { getInitials, getPriorityColor, formatDate, daysUntil } from '@/lib/utils';
 import { cn } from '@/lib/utils';
-import { useAppStore } from '@/store/app-store';
+import { useUpdateTask } from '@/hooks/use-tasks';
+import { useUIStore } from '@/store/app-store';
 
-const COLUMNS: { status: TaskStatus; label: string; color: string; bg: string }[] = [
+const COLUMNS = [
   { status: 'NOT_STARTED', label: 'Not Started', color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-800' },
   { status: 'IN_PROGRESS', label: 'In Progress', color: 'text-blue-600 dark:text-blue-400', bg: 'bg-blue-50 dark:bg-blue-950/20' },
   { status: 'BLOCKED', label: 'Blocked', color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-950/20' },
   { status: 'IN_REVIEW', label: 'In Review', color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-950/20' },
   { status: 'COMPLETED', label: 'Completed', color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/20' },
-];
+] as const;
+
+type TaskStatus = typeof COLUMNS[number]['status'];
 
 interface KanbanBoardProps {
-  tasks: Task[];
+  tasks: any[];
   projectId?: string;
 }
 
 export function KanbanBoard({ tasks, projectId }: KanbanBoardProps) {
-  const { updateTask, selectTask } = useAppStore();
+  const { selectTask } = useUIStore();
+  const updateTask = useUpdateTask();
   const [dragging, setDragging] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<TaskStatus | null>(null);
 
   const getColumnTasks = (status: TaskStatus) => tasks.filter(t => t.status === status);
 
-  const handleDragStart = (taskId: string) => setDragging(taskId);
-  const handleDragEnd = () => { setDragging(null); setDragOver(null); };
   const handleDrop = (status: TaskStatus) => {
-    if (dragging) updateTask(dragging, { status });
-    handleDragEnd();
+    if (dragging) {
+      updateTask.mutate({ id: dragging, data: { status } });
+    }
+    setDragging(null);
+    setDragOver(null);
   };
 
   return (
@@ -51,7 +54,6 @@ export function KanbanBoard({ tasks, projectId }: KanbanBoardProps) {
             onDrop={() => handleDrop(col.status)}
             onDragLeave={() => setDragOver(null)}
           >
-            {/* Column header */}
             <div className={cn('flex items-center justify-between rounded-t-xl px-3 py-2.5', col.bg)}>
               <div className="flex items-center gap-2">
                 <span className={cn('text-xs font-semibold', col.color)}>{col.label}</span>
@@ -64,15 +66,14 @@ export function KanbanBoard({ tasks, projectId }: KanbanBoardProps) {
               </button>
             </div>
 
-            {/* Cards */}
             <div className="flex-1 space-y-2.5 rounded-b-xl bg-slate-50/60 p-2 dark:bg-slate-900/40 min-h-[200px]">
-              {colTasks.map(task => (
+              {colTasks.map((task: any) => (
                 <KanbanCard
                   key={task.id}
                   task={task}
                   isDragging={dragging === task.id}
-                  onDragStart={() => handleDragStart(task.id)}
-                  onDragEnd={handleDragEnd}
+                  onDragStart={() => setDragging(task.id)}
+                  onDragEnd={() => { setDragging(null); setDragOver(null); }}
                   onClick={() => selectTask(task.id)}
                 />
               ))}
@@ -90,7 +91,7 @@ export function KanbanBoard({ tasks, projectId }: KanbanBoardProps) {
 }
 
 function KanbanCard({ task, isDragging, onDragStart, onDragEnd, onClick }: {
-  task: Task;
+  task: any;
   isDragging: boolean;
   onDragStart: () => void;
   onDragEnd: () => void;
@@ -112,10 +113,9 @@ function KanbanCard({ task, isDragging, onDragStart, onDragEnd, onClick }: {
         task.priority === 'CRITICAL' && 'border-l-2 border-l-red-600'
       )}
     >
-      {/* Labels */}
-      {task.labels.length > 0 && (
+      {(task.labels ?? []).length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1">
-          {task.labels.map(label => (
+          {task.labels.map((label: string) => (
             <span key={label} className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-medium text-indigo-600 dark:bg-indigo-950/30 dark:text-indigo-400">
               {label}
             </span>
@@ -125,32 +125,31 @@ function KanbanCard({ task, isDragging, onDragStart, onDragEnd, onClick }: {
 
       <p className="text-xs font-medium text-slate-900 dark:text-slate-100 line-clamp-2 leading-relaxed">{task.title}</p>
 
-      {/* Progress */}
-      {task.progressPercent > 0 && (
+      {(task.progressPercent ?? 0) > 0 && (
         <div className="mt-2">
           <Progress value={task.progressPercent} className="h-1" />
         </div>
       )}
 
-      {/* Subtasks */}
-      {task.subtasks.length > 0 && (
+      {(task.subtasks ?? []).length > 0 && (
         <p className="mt-1.5 text-[10px] text-slate-400">
-          {task.subtasks.filter(s => s.completed).length}/{task.subtasks.length} subtasks
+          {task.subtasks.filter((s: any) => s.completed).length}/{task.subtasks.length} subtasks
         </p>
       )}
 
-      {/* Meta */}
       <div className="mt-2.5 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Avatar className="h-5 w-5">
-            <AvatarFallback name={task.assignee.name} className="text-[8px]">
-              {getInitials(task.assignee.name)}
-            </AvatarFallback>
-          </Avatar>
-          {task.estimatedHours > 0 && (
+          {task.assignee && (
+            <Avatar className="h-5 w-5">
+              <AvatarFallback name={task.assignee.name} className="text-[8px]">
+                {getInitials(task.assignee.name)}
+              </AvatarFallback>
+            </Avatar>
+          )}
+          {(task.estimatedHours ?? 0) > 0 && (
             <span className="flex items-center gap-0.5 text-[10px] text-slate-400">
               <Clock className="h-2.5 w-2.5" />
-              {task.actualHours}/{task.estimatedHours}h
+              {task.actualHours ?? 0}/{task.estimatedHours}h
             </span>
           )}
         </div>
@@ -163,7 +162,6 @@ function KanbanCard({ task, isDragging, onDragStart, onDragEnd, onClick }: {
         </div>
       </div>
 
-      {/* Due date */}
       <div className={cn(
         'mt-1.5 text-[10px] font-medium',
         isOverdue ? 'text-red-600 dark:text-red-400' : daysLeft <= 3 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'

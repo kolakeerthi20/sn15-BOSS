@@ -1,18 +1,23 @@
 'use client';
 import React, { useState } from 'react';
 import { Search, Bell, Sun, Moon, Plus, ChevronDown } from 'lucide-react';
-import { useAppStore } from '@/store/app-store';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { useSession } from 'next-auth/react';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { getInitials, formatRelativeTime } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { useUIStore } from '@/store/app-store';
+import { useNotifications, useMarkNotificationRead, useMarkAllNotificationsRead } from '@/hooks/use-notifications';
 
 export function Header({ title }: { title?: string }) {
-  const { currentUser, darkMode, toggleDarkMode, notifications, markNotificationRead, markAllNotificationsRead } = useAppStore();
+  const { data: session } = useSession();
+  const { darkMode, toggleDarkMode } = useUIStore();
+  const { data: notifications = [] } = useNotifications();
+  const markRead = useMarkNotificationRead();
+  const markAllRead = useMarkAllNotificationsRead();
   const [notifOpen, setNotifOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const unread = notifications.filter(n => !n.isRead);
+  const unread = notifications.filter((n: any) => !n.isRead);
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-slate-200 bg-white/95 px-6 backdrop-blur-sm dark:border-slate-800 dark:bg-slate-950/95">
@@ -64,7 +69,10 @@ export function Header({ title }: { title?: string }) {
             <div className="absolute right-0 top-10 z-50 w-80 rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-900">
               <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
                 <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Notifications</span>
-                <button onClick={markAllNotificationsRead} className="text-xs text-indigo-600 hover:underline dark:text-indigo-400">
+                <button
+                  onClick={() => markAllRead.mutate(undefined)}
+                  className="text-xs text-indigo-600 hover:underline dark:text-indigo-400"
+                >
                   Mark all read
                 </button>
               </div>
@@ -72,10 +80,10 @@ export function Header({ title }: { title?: string }) {
                 {notifications.length === 0 ? (
                   <p className="px-4 py-6 text-center text-sm text-slate-500">No notifications</p>
                 ) : (
-                  notifications.slice(0, 8).map(n => (
+                  notifications.slice(0, 8).map((n: any) => (
                     <div
                       key={n.id}
-                      onClick={() => markNotificationRead(n.id)}
+                      onClick={() => markRead.mutate(n.id)}
                       className={cn(
                         'cursor-pointer border-b border-slate-100 px-4 py-3 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50',
                         !n.isRead && 'bg-indigo-50/50 dark:bg-indigo-950/20'
@@ -104,22 +112,22 @@ export function Header({ title }: { title?: string }) {
         </Button>
 
         {/* User Avatar */}
-        {currentUser && (
+        {session?.user && (
           <div className="flex items-center gap-2 cursor-pointer rounded-lg px-2 py-1 hover:bg-slate-100 dark:hover:bg-slate-800">
             <Avatar className="h-7 w-7">
-              <AvatarFallback name={currentUser.name} className="text-xs">
-                {getInitials(currentUser.name)}
+              {session.user.image && <AvatarImage src={session.user.image} alt={session.user.name ?? ''} />}
+              <AvatarFallback name={session.user.name ?? ''} className="text-xs">
+                {getInitials(session.user.name ?? session.user.email ?? '?')}
               </AvatarFallback>
             </Avatar>
             <span className="hidden text-xs font-medium text-slate-700 dark:text-slate-300 lg:block">
-              {currentUser.name.split(' ')[0]}
+              {session.user.name?.split(' ')[0]}
             </span>
             <ChevronDown className="h-3 w-3 text-slate-400" />
           </div>
         )}
       </div>
 
-      {/* Overlay to close notification panel */}
       {notifOpen && (
         <div className="fixed inset-0 z-40" onClick={() => setNotifOpen(false)} />
       )}
