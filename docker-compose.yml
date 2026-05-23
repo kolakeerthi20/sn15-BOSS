@@ -1,0 +1,83 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: boss_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-boss_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-boss_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-boss_db}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./apps/api/src/database/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./apps/api/src/database/migrations/002_seed_data.sql:/docker-entrypoint-initdb.d/02_seed.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-boss_user} -d ${POSTGRES_DB:-boss_db}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: boss_redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: boss_api
+    restart: unless-stopped
+    ports:
+      - '4000:4000'
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER:-boss_user}:${POSTGRES_PASSWORD:-boss_secret}@postgres:5432/${POSTGRES_DB:-boss_db}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-your-refresh-secret-change-in-production}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/api:/app
+      - /app/node_modules
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: boss_web
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-http://localhost:4000}
+    depends_on:
+      - api
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -1,0 +1,21 @@
+{
+  "name": "boss-platform",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "cd apps/api && npm run start:dev",
+    "dev:web": "cd apps/web && npm run dev",
+    "install:all": "npm install && cd apps/api && npm install && cd ../web && npm install",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:db": "docker-compose up -d postgres redis",
+    "docker:logs": "docker-compose logs -f",
+    "build:api": "cd apps/api && npm run build",
+    "build:web": "cd apps/web && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

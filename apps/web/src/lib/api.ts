@@ -89,11 +89,13 @@ export const projectsApi = {
 export const tasksApi = {
   list: (params?: any) => api.get('/tasks', { params }) as any,
   get: (id: string) => api.get(`/tasks/${id}`) as any,
+  getDetail: (id: string) => api.get(`/tasks/${id}`) as any,
   create: (data: any) => api.post('/tasks', data) as any,
   update: (id: string, data: any) => api.patch(`/tasks/${id}`, data) as any,
   delete: (id: string) => api.delete(`/tasks/${id}`) as any,
-  logTime: (id: string, data: any) => api.post(`/tasks/${id}/time`, data) as any,
+  logTime: (id: string, data: { hours: number; description?: string; date?: string }) => api.post(`/tasks/${id}/time`, data) as any,
   addComment: (id: string, content: string) => api.post(`/tasks/${id}/comments`, { content }) as any,
+  addUpdate: (id: string, data: { content?: string; videoUrl?: string; imageUrls?: string[]; updateType?: string; progressPct?: number }) => api.post(`/tasks/${id}/comments`, data) as any,
 };
 
 export const dailyLogsApi = {
@@ -118,6 +120,7 @@ export const reportsApi = {
   overdueTasks: () => api.get('/reports/overdue-tasks') as any,
   bottlenecks: (projectId?: string) =>
     api.get('/reports/bottlenecks', { params: { projectId } }) as any,
+  teamPerformance: (params?: any) => api.get('/reports/team-performance', { params }) as any,
 };
 
 export const usersApi = {

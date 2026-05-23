@@ -284,4 +284,50 @@ export class ReportsService {
       params,
     );
   }
+
+  async getTeamPerformance(tenantId: string, query: any = {}) {
+    const { startDate, endDate, projectId } = query;
+    const start = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const end = endDate || new Date().toISOString().split('T')[0];
+
+    const params: any[] = [tenantId, start, end];
+    let projectFilter = '';
+    if (projectId) {
+      params.push(projectId);
+      projectFilter = `AND t.project_id = $${params.length}`;
+    }
+
+    const members = await this.db.queryMany(
+      `SELECT
+         u.id, u.first_name, u.last_name, u.avatar_url, u.designation, u.department,
+         COUNT(DISTINCT t.id) FILTER (WHERE t.assignee_id = u.id ${projectFilter}) AS total_tasks,
+         COUNT(DISTINCT t.id) FILTER (WHERE t.assignee_id = u.id AND t.status = 'completed' ${projectFilter}) AS completed_tasks,
+         COUNT(DISTINCT t.id) FILTER (WHERE t.assignee_id = u.id AND t.status IN ('in_progress','blocked') ${projectFilter}) AS active_tasks,
+         COUNT(DISTINCT t.id) FILTER (WHERE t.assignee_id = u.id AND t.due_date < NOW() AND t.status NOT IN ('completed','cancelled') ${projectFilter}) AS overdue_tasks,
+         COALESCE(SUM(dl.hours_spent) FILTER (WHERE dl.log_date BETWEEN $2 AND $3), 0) AS hours_logged,
+         COUNT(DISTINCT dl.log_date) FILTER (WHERE dl.is_submitted AND dl.log_date BETWEEN $2 AND $3) AS days_submitted,
+         COALESCE(AVG(dl.mood_score) FILTER (WHERE dl.log_date BETWEEN $2 AND $3), 0) AS avg_mood,
+         COUNT(DISTINCT c.id) FILTER (WHERE c.created_at BETWEEN $2::timestamptz AND $3::timestamptz) AS comments_made
+       FROM users u
+       LEFT JOIN tasks t ON t.tenant_id = u.tenant_id
+       LEFT JOIN daily_logs dl ON dl.user_id = u.id
+       LEFT JOIN comments c ON c.author_id = u.id AND c.entity_type = 'task'
+       WHERE u.tenant_id = $1 AND u.status = 'active'
+       GROUP BY u.id
+       ORDER BY completed_tasks DESC, hours_logged DESC`,
+      params,
+    );
+
+    // Activity heatmap per user (last 30 days)
+    const activityData = await this.db.queryMany(
+      `SELECT dl.user_id, dl.log_date, SUM(dl.hours_spent) AS hours
+       FROM daily_logs dl
+       WHERE dl.tenant_id = $1 AND dl.log_date BETWEEN $2 AND $3 AND dl.is_submitted = true
+       GROUP BY dl.user_id, dl.log_date
+       ORDER BY dl.log_date`,
+      [tenantId, start, end],
+    );
+
+    return { members, activityData, period: { start, end } };
+  }
 }
